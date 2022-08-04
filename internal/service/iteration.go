@@ -28,10 +28,10 @@ func (s *Service) RunIteration() {
 	for {
 		// Порционно получаем список пользователей, удовлетворяющих условию по
 		// часовым поясам.
-		getResult, err := s.provider.GetUsersByTimezones(tzRanges, cursor)
+		getResult, err := s.safeGetUsersByTimezones(tzRanges, cursor)
 		if err != nil {
-			// TODO: Перепроверить, корректно ли это поведение.
-			s.onError(err)
+			// TODO: Здесь необходимо ещё несколько раз попробовать получить
+			//  данные. Может быть соединение с провайдером моргнуло.
 			return
 		}
 
@@ -80,7 +80,9 @@ func (s *Service) RunIteration() {
 		for _, tasks := range appTasksMap {
 			wg.Add(1)
 
-			go func() {
+			go func(tasks []task.Task) {
+				defer wg.Done()
+
 				// Пробегаемся по каждой задаче и передаем в неё список подходящих
 				// пользователей.
 				for _, t := range tasks {
@@ -99,9 +101,8 @@ func (s *Service) RunIteration() {
 
 					// Передаём в задачу пользователей для проверки на отправку
 					// уведомления.
-					params, err := t.Process(users)
-					if err != nil {
-						s.onError(err)
+					params, processErr := s.safeProcess(&t, users)
+					if processErr != nil {
 						continue
 					}
 
@@ -112,23 +113,18 @@ func (s *Service) RunIteration() {
 					}
 
 					// Отправляем уведомления пользователям.
-					successUserIds, err := s.sendNotifications(params)
+					sendResult, err := s.sendNotifications(params)
 					if err != nil {
-						s.onError(err)
 						continue
 					}
 
 					// Сохраняем факт отправки уведомления.
-					// FIXME: Это логирование не работает.
-					err = s.provider.SaveNotificationDate(successUserIds, t.AppId, t.Id, time.Now())
+					err = s.safeSaveSendResult(sendResult, t.AppId, t.Id, time.Now())
 					if err != nil {
-						s.onError(err)
 						continue
 					}
 				}
-
-				wg.Done()
-			}()
+			}(tasks)
 		}
 
 		// Ожидаем выполнения всех горутин.

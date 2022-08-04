@@ -1,6 +1,10 @@
 package mongodb
 
-import "time"
+import (
+	"github.com/wolframdeus/noitifications-service/internal/timezone"
+	"github.com/wolframdeus/noitifications-service/internal/user"
+	"time"
+)
 
 // UserId описывает идентификатор пользователя ВКонтакте.
 type UserId uint64
@@ -38,6 +42,14 @@ type User struct {
 	// необходимо прибавить ко времени по Гринвичу, чтобы получить локальное
 	// время.
 	Timezone int `bson:"timezone"`
+}
+
+// ToCommon конвертирует текущего пользователя к общему виду.
+func (u *User) ToCommon() *user.User {
+	return &user.User{
+		Id:       user.Id(u.Id),
+		Timezone: timezone.Timezone(u.Timezone),
+	}
 }
 
 // NewUser создает ссылку на новый экземпляр User.

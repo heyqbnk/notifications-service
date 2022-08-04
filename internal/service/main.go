@@ -3,10 +3,11 @@ package service
 import (
 	"errors"
 	"github.com/SevereCloud/vksdk/v2/api"
+	"github.com/getsentry/sentry-go"
 	"github.com/wolframdeus/noitifications-service/internal/app"
+	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
 	"github.com/wolframdeus/noitifications-service/internal/providers"
 	"github.com/wolframdeus/noitifications-service/internal/task"
-	"github.com/wolframdeus/noitifications-service/internal/timezone"
 	"github.com/wolframdeus/noitifications-service/internal/user"
 	"time"
 )
@@ -15,14 +16,11 @@ import (
 // отправку уведомлений пользователю.
 type SetAllowStatusForUser func(appId app.Id, userId user.Id, allowed bool) error
 
-// OnError описывает функцию, которая вызывается в случае возникновения
-// внутренней ошибки.
-type OnError func(error)
-
 type NewOptions struct {
 	// Интервал между итерациями сервиса, которые вызывают отправку уведомлений.
 	TickInterval time.Duration
-	OnError      OnError
+	// Список опций, которые далее передаются для инициализации Sentry Hub.
+	SentryOptions *sentry.ClientOptions
 }
 
 type Service struct {
@@ -31,10 +29,10 @@ type Service struct {
 	tickInterval time.Duration
 	// Список задач, выполняемых сервисом.
 	tasks []task.Task
-	// TODO: Обезопасить функцию.
-	onError OnError
 	// Экземпляр библиотеки для работы с API ВКонтакте.
 	vk *api.VK
+	// Hub Sentry для логирования ошибок.
+	sentryHub *sentry.Hub
 }
 
 // AddTask добавляет новую задачу.
@@ -42,43 +40,50 @@ func (s *Service) AddTask(tasks ...task.Task) {
 	s.tasks = append(s.tasks, tasks...)
 }
 
-// RegisterUser регистрирует пользователя в сервисе.
-func (s *Service) RegisterUser(userId user.Id, tz timezone.Timezone) error {
-	// FIXME: Реализовать безопасный вызов (safe).
-	return s.provider.RegisterUser(userId, tz)
-}
-
 // Start выполняет запуск сервиса.
 func (s *Service) Start() {
+	// TODO: Implement.
 }
 
 // Stop выполняет остановку сервиса.
 func (s *Service) Stop() {
+	// TODO: Implement.
 }
 
 // SetAllowStatusForUser изменяет разрешение на отправку уведомлений
 // пользователю.
 // TODO: Возможно, стоит предоставить возможность выполнять upsert в случае,
 //  если пользователь не существует.
-func (s *Service) SetAllowStatusForUser(userId user.Id, appId app.Id, allowed bool) error {
+func (s *Service) SetAllowStatusForUser(
+	userId user.Id,
+	appId app.Id,
+	allowed bool,
+) *customerror.ServiceError {
 	return s.safeSetAllowStatusForUser(userId, appId, allowed)
 }
 
-// UserExists возвращает true в случае, если пользователь зарегистрирован в
-// сервисе.
-func (s *Service) UserExists(userId user.Id) (bool, error) {
-	// FIXME: Реализовать безопасный вызов (safe).
-	return s.provider.UserExists(userId)
-}
-
 // New создаёт ссылку на новый экземпляр Service.
-func New(provider providers.Provider, accessToken string, options NewOptions) (*Service, error) {
+func New(
+	provider providers.Provider,
+	accessToken string,
+	options NewOptions,
+) (*Service, error) {
 	if options.TickInterval == 0 {
 		return nil, errors.New(`"TickInterval" не был указан`)
 	}
+	sentryHub := sentry.CurrentHub().Clone()
+
+	// Если указаны опции инициализации Sentry-клиента, используем их.
+	if options.SentryOptions != nil {
+		client, err := sentry.NewClient(*options.SentryOptions)
+		if err != nil {
+			return nil, err
+		}
+		sentryHub.BindClient(client)
+	}
 	return &Service{
-		provider: provider,
-		onError:  options.OnError,
-		vk:       api.NewVK(accessToken),
+		provider:  provider,
+		vk:        api.NewVK(accessToken),
+		sentryHub: sentryHub,
 	}, nil
 }

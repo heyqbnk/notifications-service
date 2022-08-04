@@ -1,9 +1,11 @@
 package task
 
 import (
+	"errors"
 	"fmt"
 	"github.com/wolframdeus/noitifications-service/internal"
 	"github.com/wolframdeus/noitifications-service/internal/app"
+	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
 	"github.com/wolframdeus/noitifications-service/internal/notification"
 	"github.com/wolframdeus/noitifications-service/internal/timezone"
 	"github.com/wolframdeus/noitifications-service/internal/user"
@@ -17,7 +19,7 @@ const (
 
 type Id uint
 
-type ProcessFunc func(users []user.User) ([]notification.Params, error)
+type ProcessFunc func(users []user.User) ([]notification.Params, *customerror.TaskError)
 
 // Task описывает структуру любой задачи-уведомления.
 type Task struct {
@@ -70,17 +72,17 @@ func (s *Task) GetTimezones() []timezone.Range {
 
 // Process принимает на вход список пользователей и проверяет, необходимо ли
 // им и с какими параметрами отправить уведомление.
-func (s *Task) Process(users []user.User) (params []notification.Params, err error) {
+func (s *Task) Process(users []user.User) (params []notification.Params, err *customerror.TaskError) {
 	defer func() {
 		if e := recover(); e != nil {
-			var text string
+			var eRecovered error
+
 			if eConverted, ok := e.(error); ok {
-				text = eConverted.Error()
+				eRecovered = eConverted
 			} else {
-				text = fmt.Sprintf("%s", e)
+				eRecovered = errors.New(fmt.Sprintf("%s", e))
 			}
-			// TODO: Написать нормальный текст.
-			err = fmt.Errorf("произошла ошибка в задаче: %s", text)
+			err = customerror.NewTaskError(s.AppId, s.Id, eRecovered)
 		}
 	}()
 

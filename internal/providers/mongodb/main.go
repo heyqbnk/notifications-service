@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/wolframdeus/noitifications-service/internal/app"
+	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
+	"github.com/wolframdeus/noitifications-service/internal/notification"
 	"github.com/wolframdeus/noitifications-service/internal/providers"
 	"github.com/wolframdeus/noitifications-service/internal/task"
 	"github.com/wolframdeus/noitifications-service/internal/timezone"
@@ -27,7 +29,7 @@ type Provider struct {
 func (p *Provider) GetUsersByTimezones(
 	tz []timezone.Range,
 	cursor user.Id,
-) (*providers.GetUsersByTimezonesResult, error) {
+) (*providers.GetUsersByTimezonesResult, *customerror.ServiceError) {
 	if len(tz) == 0 {
 		return providers.NewGetUsersByTimezonesResult(0, nil, false), nil
 	}
@@ -51,8 +53,7 @@ func (p *Provider) GetUsersByTimezones(
 				SetSort(bson.D{{"_id", 1}}),
 		)
 	if err != nil {
-		// TODO: Возвращать общую ошибку.
-		return nil, err
+		return nil, customerror.NewServiceError(err)
 	}
 
 	var users []user.User
@@ -61,14 +62,9 @@ func (p *Provider) GetUsersByTimezones(
 		var u User
 
 		if err := cur.Decode(&u); err != nil {
-			// TODO: Возвращать общую ошибку.
-			return nil, err
+			return nil, customerror.NewServiceError(err)
 		}
-		// TODO: Вынести инициализацию user.User из User в отдельный метод.
-		users = append(users, user.User{
-			Id:       user.Id(u.Id),
-			Timezone: timezone.Timezone(u.Timezone),
-		})
+		users = append(users, *u.ToCommon())
 	}
 
 	// Пользователей нет, возвращаем стандартный ответ.
@@ -91,7 +87,7 @@ func (p *Provider) SetAllowStatusForUser(
 	userId user.Id,
 	appId app.Id,
 	allowed bool,
-) error {
+) *customerror.ServiceError {
 	// TODO: Уйти от этого подхода в сторону работы со структурой User.
 	path := fmt.Sprintf("apps.%d.areNotificationsEnabled", appId)
 	res, err := p.getUsersCollection().UpdateByID(
@@ -100,68 +96,63 @@ func (p *Provider) SetAllowStatusForUser(
 		bson.D{{"$set", bson.D{{path, allowed}}}},
 	)
 	if err != nil {
-		// TODO: Возвращать общую ошибку.
-		return err
+		return customerror.NewServiceError(err)
 	}
 	if res.MatchedCount == 0 {
-		return providers.ErrUserDoesNotExist
+		return customerror.NewServiceError(providers.ErrUserDoesNotExist)
 	}
 	return nil
 }
 
-func (p *Provider) SaveNotificationDate(
-	userIds []user.Id,
+func (p *Provider) SaveSendResult(
+	results *notification.SendResult,
 	appId app.Id,
 	taskId task.Id,
 	date time.Time,
-) error {
-	path := fmt.Sprintf("apps.%d.tasks.%d.history", appId, taskId)
-	res, err := p.
-		getUsersCollection().
-		UpdateMany(
-			context.Background(),
-			bson.M{"_id": bson.M{"$in": userIds}},
-			bson.M{
-				"$push": bson.D{{path, bson.M{
-					"$each":     []time.Time{date},
-					"$position": 0,
-					"$slice":    15, // TODO: Вынести в опцию?
-				}}},
-			},
-		)
-	if err != nil {
-		return err
-	}
-	fmt.Println(path, res.MatchedCount, userIds)
-	return nil
-}
+) *customerror.ServiceError {
+	// TODO: Возможно это сделать в виде агрегации?
+	// TODO: Возвращать этот массив ошибок.
+	// TODO: Выполнять все обновления в отдельных горутинах?
+	var errs []customerror.ServiceError
 
-func (p *Provider) UserExists(userId user.Id) (bool, error) {
-	var limit int64 = 1
-	count, err := p.
-		getUsersCollection().
-		CountDocuments(
-			context.Background(),
-			bson.D{{"_id", userId}},
-			&options.CountOptions{Limit: &limit},
-		)
-	if err != nil {
-		// TODO: Возвращать общую ошибку.
-		return false, err
-	}
-	return count > 0, nil
-}
-
-func (p *Provider) RegisterUser(userId user.Id, tz timezone.Timezone) error {
-	u := NewUser(UserId(userId), Apps{}, int(tz))
-	_, err := p.getUsersCollection().InsertOne(context.Background(), u)
-	if err != nil {
-		if mongo.IsDuplicateKeyError(err) {
-			return providers.ErrUserAlreadyExists
+	// Обновляем пользователей, которым удалось отправить уведомление.
+	if results.Success != nil && len(results.Success) > 0 {
+		path := fmt.Sprintf("apps.%d.tasks.%d.history", appId, taskId)
+		_, err := p.
+			getUsersCollection().
+			UpdateMany(
+				context.Background(),
+				bson.M{"_id": bson.M{"$in": results.Success}},
+				bson.M{
+					"$push": bson.D{{path, bson.M{
+						"$each":     []time.Time{date},
+						"$position": 0,
+						"$slice":    15, // TODO: Вынести в опцию?
+					}}},
+				},
+			)
+		if err != nil {
+			errs = append(errs, *customerror.NewServiceError(err))
 		}
-		// TODO: Возвращать общую ошибку.
-		return err
 	}
+
+	// Обновляем пользователей, уведомления которым запрещены.
+	if results.NotificationsDisabled != nil && len(results.NotificationsDisabled) > 0 {
+		path := fmt.Sprintf("apps.%d.areNotificationsEnabled", appId)
+		_, err := p.
+			getUsersCollection().
+			UpdateMany(
+				context.Background(),
+				bson.M{"_id": bson.M{"$in": results.Success}},
+				bson.D{{path, false}},
+			)
+		if err != nil {
+			errs = append(errs, *customerror.NewServiceError(err))
+		}
+	}
+
+	// TODO: Обновить пользователей, у которых кулдаун на отправку уведомления.
+
 	return nil
 }
 
@@ -171,7 +162,12 @@ func (p *Provider) getUsersCollection() *mongo.Collection {
 }
 
 // New возвращает новый экземпляр драйвера для работы с MongoDB.
-func New(host string, port uint, db string) (providers.Provider, error) {
+func New(
+	host string,
+	port uint,
+	db string,
+	getUsersByTimezonesLimit int64,
+) (providers.Provider, error) {
 	connString := fmt.Sprintf("mongodb://%s:%d", host, port)
 	client, err := mongo.Connect(context.Background(), options.Client().ApplyURI(connString))
 	if err != nil {
@@ -179,9 +175,8 @@ func New(host string, port uint, db string) (providers.Provider, error) {
 	}
 
 	return &Provider{
-		client: client,
-		db:     db,
-		// TODO: Вынести в опцию конструктора.
-		getUsersByTimezonesLimit: 10000,
+		client:                   client,
+		db:                       db,
+		getUsersByTimezonesLimit: getUsersByTimezonesLimit,
 	}, nil
 }

@@ -1,15 +1,18 @@
 package service
 
 import (
+	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
 	"github.com/wolframdeus/noitifications-service/internal/notification"
 	"github.com/wolframdeus/noitifications-service/internal/user"
 )
 
 // Выполняет отправку уведомлений пользователям.
-// TODO: Возвращать не идентификаторы пользователей, а структуры с описанием
-//  результата выполнения для каждого пользователя.
-func (s *Service) sendNotifications(params []notification.Params) ([]user.Id, error) {
-	// "Привет Вася!", [[1, 2, 3], [92, 11, 2983, 22]]
+func (s *Service) sendNotifications(
+	params []notification.Params,
+) (*notification.SendResult, *customerror.ServiceError) {
+	// Создаем карту, в которой в качестве ключа будет сообщение, а в качестве
+	// значения - список батчей из идентификаторов пользователей.
+	// Пример: { "Привет Вася!": [[1, 2, 3], [92, 11, 2983, 22]] }
 	batches := make(map[string][][]user.Id)
 
 	for _, p := range params {
@@ -38,24 +41,50 @@ func (s *Service) sendNotifications(params []notification.Params) ([]user.Id, er
 		userIds[len(userIds)-1] = append(batch, p.UserId)
 	}
 
-	successUserIds := make([]user.Id, 0, len(params))
+	var result *notification.SendResult
 
 	// Пробегаемся по каждой пачке и рассылаем уведомления.
 	for message, userIds := range batches {
 		for _, b := range userIds {
 			// TODO: Скорее всего это можно делать в отдельных горутинах.
-			res, _ := s.vk.NotificationsSendMessage(map[string]interface{}{
+			// TODO: Не используется fragment :(
+			res, err := s.vk.NotificationsSendMessage(map[string]interface{}{
 				"user_ids": b,
 				"message":  message,
 			})
 
-			// TODO: Error handling.
+			// Если произошла ошибка внутреннего характера, добавляем пользователей
+			// в соответствующий раздел.
+			if err != nil {
+				result.InternalError = append(result.InternalError, b...)
+			}
+
+			// Пробегаемся по каждому пользователю и добавляем его в свой раздел.
 			for _, r := range res {
+				uid := user.Id(r.UserID)
+
 				if r.Status {
-					successUserIds = append(successUserIds, user.Id(r.UserID))
+					result.Success = append(result.Success, uid)
+				} else {
+					// Спецификация ошибок:
+					// https://dev.vk.com/method/notifications.sendMessage#Результат
+					switch r.Error.Code {
+					case 1, 4:
+						result.NotificationsDisabled = append(result.NotificationsDisabled, uid)
+					case 2:
+						result.HourRateLimitReached = append(result.HourRateLimitReached, uid)
+					case 3:
+						result.DayRateLimitReached = append(result.DayRateLimitReached, uid)
+					default:
+						result.UnknownError = append(result.UnknownError, uid)
+					}
 				}
 			}
 		}
 	}
-	return successUserIds, nil
+
+	// TODO: Как-то логировать ошибки, которые возвращаются от API ВКонтакте,
+	//  чтобы понимать, что что-то не так.
+
+	return result, nil
 }
