@@ -4,7 +4,7 @@ import (
 	"errors"
 	"github.com/SevereCloud/vksdk/v2/api"
 	"github.com/getsentry/sentry-go"
-	"github.com/wolframdeus/noitifications-service/internal/app"
+	"github.com/wolframdeus/noitifications-service/internal/appid"
 	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
 	"github.com/wolframdeus/noitifications-service/internal/providers"
 	"github.com/wolframdeus/noitifications-service/internal/task"
@@ -14,7 +14,7 @@ import (
 
 // SetAllowStatusForUser описывает функцию для изменения разрешения на
 // отправку уведомлений пользователю.
-type SetAllowStatusForUser func(appId app.Id, userId user.Id, allowed bool) error
+type SetAllowStatusForUser func(appId appid.Id, userId user.Id, allowed bool) error
 
 type NewOptions struct {
 	// Интервал между итерациями сервиса, которые вызывают отправку уведомлений.
@@ -33,6 +33,8 @@ type Service struct {
 	vk *api.VK
 	// Hub Sentry для логирования ошибок.
 	sentryHub *sentry.Hub
+	// Тикер, который вызывает итерации сервиса.
+	ticker *time.Ticker
 }
 
 // AddTask добавляет новую задачу.
@@ -41,13 +43,31 @@ func (s *Service) AddTask(tasks ...task.Task) {
 }
 
 // Start выполняет запуск сервиса.
+// TODO: Этот код стоит исправить, т.к. он допускает параллельный вызов
+//  нескольких итераций или их пересечение.
 func (s *Service) Start() {
-	// TODO: Implement.
+	if s.ticker != nil {
+		return
+	}
+	s.ticker = time.NewTicker(s.tickInterval)
+
+	go func() {
+		select {
+		case <-s.ticker.C:
+			s.runIteration()
+		}
+	}()
 }
 
 // Stop выполняет остановку сервиса.
+// TODO: Эта функция должна поддерживать graceful shutdown и по этой причине,
+//  возможно, она должна принимать context.
 func (s *Service) Stop() {
-	// TODO: Implement.
+	if s.ticker == nil {
+		return
+	}
+	s.ticker.Stop()
+	s.ticker = nil
 }
 
 // SetAllowStatusForUser изменяет разрешение на отправку уведомлений
@@ -56,10 +76,15 @@ func (s *Service) Stop() {
 //  если пользователь не существует.
 func (s *Service) SetAllowStatusForUser(
 	userId user.Id,
-	appId app.Id,
+	appId appid.Id,
 	allowed bool,
+	user *user.User,
 ) *customerror.ServiceError {
-	return s.safeSetAllowStatusForUser(userId, appId, allowed)
+	return s.safeSetAllowStatusForUser(userId, appId, allowed, user)
+}
+
+func (s *Service) Cleanup() {
+	s.sentryHub.Flush(2 * time.Second)
 }
 
 // New создаёт ссылку на новый экземпляр Service.

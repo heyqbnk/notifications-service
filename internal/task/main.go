@@ -4,9 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/wolframdeus/noitifications-service/internal"
-	"github.com/wolframdeus/noitifications-service/internal/app"
+	"github.com/wolframdeus/noitifications-service/internal/appid"
 	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
 	"github.com/wolframdeus/noitifications-service/internal/notification"
+	"github.com/wolframdeus/noitifications-service/internal/taskid"
 	"github.com/wolframdeus/noitifications-service/internal/timezone"
 	"github.com/wolframdeus/noitifications-service/internal/user"
 	"sort"
@@ -17,16 +18,14 @@ const (
 	dayMinutes = 24 * 60
 )
 
-type Id uint
-
 type ProcessFunc func(users []user.User) ([]notification.Params, *customerror.TaskError)
 
 // Task описывает структуру любой задачи-уведомления.
 type Task struct {
 	// Идентификатор приложения-владельца.
-	AppId app.Id
+	AppId appid.Id
 	// Идентификатор самой задачи.
-	Id Id
+	Id taskid.Id
 	// Начало временного промежутка для отправки этого уведомления. Данное
 	// значение описывает локальное время пользователя.
 	From *internal.Time
@@ -92,8 +91,8 @@ func (s *Task) Process(users []user.User) (params []notification.Params, err *cu
 
 // NewTask возвращает ссылку на новый экземпляр Task.
 func NewTask(
-	id Id,
-	appId app.Id,
+	id taskid.Id,
+	appId appid.Id,
 	from *internal.Time,
 	to *internal.Time,
 	process ProcessFunc,

@@ -1,8 +1,9 @@
 package service
 
 import (
-	"github.com/wolframdeus/noitifications-service/internal/app"
+	"github.com/wolframdeus/noitifications-service/internal/appid"
 	"github.com/wolframdeus/noitifications-service/internal/task"
+	"github.com/wolframdeus/noitifications-service/internal/taskid"
 	"github.com/wolframdeus/noitifications-service/internal/timezone"
 	"github.com/wolframdeus/noitifications-service/internal/user"
 	"sort"
@@ -20,7 +21,7 @@ type tasksTimezoneMap map[*task.Task][]timezone.Range
 
 // Вызывает итерацию работы сервиса, которая подразумевает получение списка
 // пользователей для всех задач, а также передачу их в задачи.
-func (s *Service) RunIteration() {
+func (s *Service) runIteration() {
 	// Получаем текущий список всех часовых задач.
 	tzRanges, tasksTzMap := s.getTimezonesMeta()
 
@@ -47,7 +48,7 @@ func (s *Service) RunIteration() {
 
 		// Сортируем пользователей по задачам исходя из того, в каких часовых
 		// поясах задача выполняется, а также исходя часового пояса пользователя.
-		taskUsersMap := make(map[task.Id][]user.User, len(s.tasks))
+		taskUsersMap := make(map[taskid.Id][]user.User, len(s.tasks))
 
 		for t, timezones := range tasksTzMap {
 			// Нам необходимо понять относительно которого часового пояса нужно
@@ -181,8 +182,8 @@ func (s *Service) getTimezonesMeta() ([]timezone.Range, tasksTimezoneMap) {
 
 // Возвращает карту с ключом в виде идентификатора приложения и значением в
 // виде списка задач, которые этому приложению принадлежат.
-func (s *Service) getAppTasksMap() map[app.Id][]task.Task {
-	res := make(map[app.Id][]task.Task)
+func (s *Service) getAppTasksMap() map[appid.Id][]task.Task {
+	res := make(map[appid.Id][]task.Task)
 
 	for _, t := range s.tasks {
 		res[t.AppId] = append(res[t.AppId], t)

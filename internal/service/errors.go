@@ -2,7 +2,7 @@ package service
 
 import (
 	"github.com/getsentry/sentry-go"
-	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
+	"github.com/wolframdeus/noitifications-service/internal/errors"
 	"strconv"
 )
 
@@ -17,7 +17,7 @@ type CaptureOptions struct {
 
 // Логирует ошибку, возникшую в сервисе.
 func (s *Service) captureServiceError(
-	err *customerror.ServiceError,
+	err *errors.ServiceError,
 	options *CaptureOptions,
 ) {
 	s.sentryHub.WithScope(func(scope *sentry.Scope) {
@@ -32,7 +32,7 @@ func (s *Service) captureServiceError(
 
 // Логирует ошибку, возникшую в задаче.
 func (s *Service) captureTaskError(
-	err *customerror.TaskError,
+	err *errors.TaskError,
 	options *CaptureOptions,
 ) {
 	s.sentryHub.WithScope(func(scope *sentry.Scope) {

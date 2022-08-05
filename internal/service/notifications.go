@@ -1,7 +1,7 @@
 package service
 
 import (
-	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
+	"github.com/wolframdeus/noitifications-service/internal/errors"
 	"github.com/wolframdeus/noitifications-service/internal/notification"
 	"github.com/wolframdeus/noitifications-service/internal/user"
 )
@@ -9,7 +9,7 @@ import (
 // Выполняет отправку уведомлений пользователям.
 func (s *Service) sendNotifications(
 	params []notification.Params,
-) (*notification.SendResult, *customerror.ServiceError) {
+) (*notification.SendResult, *errors.ServiceError) {
 	// Создаем карту, в которой в качестве ключа будет сообщение, а в качестве
 	// значения - список батчей из идентификаторов пользователей.
 	// Пример: { "Привет Вася!": [[1, 2, 3], [92, 11, 2983, 22]] }

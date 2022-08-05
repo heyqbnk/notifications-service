@@ -1,21 +1,21 @@
 package errors
 
 import (
-	"github.com/wolframdeus/noitifications-service/internal/app"
-	"github.com/wolframdeus/noitifications-service/internal/task"
+	"github.com/wolframdeus/noitifications-service/internal/appid"
+	"github.com/wolframdeus/noitifications-service/internal/taskid"
 )
 
 type TaskError struct {
 	// Идентификатор приложения владельца уведомления.
-	AppId app.Id
+	AppId appid.Id
 	// Идентификатор задачи.
-	TaskId task.Id
+	TaskId taskid.Id
 	// Оригинальная выброшенная ошибка.
 	Original error
 }
 
 // NewTaskError возвращает ссылку на новый экземпляр TaskError.
-func NewTaskError(appId app.Id, taskId task.Id, err error) *TaskError {
+func NewTaskError(appId appid.Id, taskId taskid.Id, err error) *TaskError {
 	return &TaskError{
 		AppId:    appId,
 		TaskId:   taskId,

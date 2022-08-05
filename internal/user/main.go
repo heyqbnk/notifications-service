@@ -11,3 +11,8 @@ type User struct {
 	// Часовой пояс пользователя.
 	Timezone timezone.Timezone
 }
+
+// New возвращает ссылку на новый экземпляр пользователя.
+func New(id Id, tz timezone.Timezone) *User {
+	return &User{Id: id, Timezone: tz}
+}

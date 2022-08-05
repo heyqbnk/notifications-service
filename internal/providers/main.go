@@ -1,10 +1,10 @@
 package providers
 
 import (
-	"github.com/wolframdeus/noitifications-service/internal/app"
+	"github.com/wolframdeus/noitifications-service/internal/appid"
 	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
 	"github.com/wolframdeus/noitifications-service/internal/notification"
-	"github.com/wolframdeus/noitifications-service/internal/task"
+	"github.com/wolframdeus/noitifications-service/internal/taskid"
 	"github.com/wolframdeus/noitifications-service/internal/timezone"
 	"github.com/wolframdeus/noitifications-service/internal/user"
 	"time"
@@ -37,13 +37,18 @@ type Provider interface {
 
 	// SetAllowStatusForUser - функция для изменения разрешения на отправку
 	// уведомлений пользователю.
-	SetAllowStatusForUser(userId user.Id, appId app.Id, allowed bool) *customerror.ServiceError
+	SetAllowStatusForUser(
+		userId user.Id,
+		appId appid.Id,
+		allowed bool,
+		user *user.User,
+	) *customerror.ServiceError
 
 	// SaveSendResult сохраняет результаты отправки уведомлений.
 	SaveSendResult(
 		results *notification.SendResult,
-		appId app.Id,
-		taskId task.Id,
+		appId appid.Id,
+		taskId taskid.Id,
 		date time.Time,
 	) *customerror.ServiceError
 }

@@ -1,22 +1,23 @@
 package main
 
 import (
-	"fmt"
 	"github.com/getsentry/sentry-go"
 	"github.com/wolframdeus/noitifications-service/internal"
-	"github.com/wolframdeus/noitifications-service/internal/app"
-	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
+	"github.com/wolframdeus/noitifications-service/internal/appid"
+	"github.com/wolframdeus/noitifications-service/internal/errors"
 	"github.com/wolframdeus/noitifications-service/internal/notification"
 	"github.com/wolframdeus/noitifications-service/internal/providers/mongodb"
 	"github.com/wolframdeus/noitifications-service/internal/service"
 	"github.com/wolframdeus/noitifications-service/internal/task"
+	"github.com/wolframdeus/noitifications-service/internal/taskid"
 	"github.com/wolframdeus/noitifications-service/internal/user"
+	"log"
 	"time"
 )
 
 const (
-	HealthAppId       app.Id  = 7865682
-	HealthSomeTaskId1 task.Id = 1
+	HealthAppId       appid.Id  = 7865682
+	HealthSomeTaskId1 taskid.Id = 1
 )
 
 func main() {
@@ -26,10 +27,8 @@ func main() {
 	}
 
 	// Создаём новый сервис.
-	s, err := service.New(provider, accessToken, service.NewOptions{
-		OnError: func(err error) {
-			fmt.Printf("Erorr occurred: %s", err.Error())
-		},
+	// FIXME: access token
+	s, err := service.New(provider, "accessToken", service.NewOptions{
 		TickInterval: 10 * time.Minute,
 		SentryOptions: &sentry.ClientOptions{
 			Dsn:              "https://792ef54fbc6e40eaaa6123514e06948a@o992980.ingest.sentry.io/6625183",
@@ -48,7 +47,7 @@ func main() {
 			HealthAppId,
 			internal.NewTime(00, 00),
 			internal.NewTime(2, 00),
-			func(users []user.User) ([]notification.Params, *customerror.TaskError) {
+			func(users []user.User) ([]notification.Params, *errors.TaskError) {
 				res := make([]notification.Params, len(users))
 
 				for i, u := range users {
@@ -59,5 +58,8 @@ func main() {
 		),
 	)
 
-	s.RunIteration()
+	if err := s.SetAllowStatusForUser(898, 521, true, nil); err != nil {
+		log.Println(err)
+	}
+	s.Cleanup()
 }

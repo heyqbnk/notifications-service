@@ -3,11 +3,11 @@ package mongodb
 import (
 	"context"
 	"fmt"
-	"github.com/wolframdeus/noitifications-service/internal/app"
+	"github.com/wolframdeus/noitifications-service/internal/appid"
 	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
 	"github.com/wolframdeus/noitifications-service/internal/notification"
 	"github.com/wolframdeus/noitifications-service/internal/providers"
-	"github.com/wolframdeus/noitifications-service/internal/task"
+	"github.com/wolframdeus/noitifications-service/internal/taskid"
 	"github.com/wolframdeus/noitifications-service/internal/timezone"
 	"github.com/wolframdeus/noitifications-service/internal/user"
 	"go.mongodb.org/mongo-driver/bson"
@@ -85,20 +85,39 @@ func (p *Provider) GetUsersByTimezones(
 
 func (p *Provider) SetAllowStatusForUser(
 	userId user.Id,
-	appId app.Id,
+	appId appid.Id,
 	allowed bool,
+	user *user.User,
 ) *customerror.ServiceError {
-	// TODO: Уйти от этого подхода в сторону работы со структурой User.
-	path := fmt.Sprintf("apps.%d.areNotificationsEnabled", appId)
+	mongoAppId := AppId(appId)
+	u := NewUser(
+		UserId(userId),
+		Apps{mongoAppId: App{AreNotificationsEnabled: allowed}},
+		0,
+	)
+
+	// Создаем пэйлоад для обновления.
+	updatePayload := bson.M{
+		"$set": u.Apps.GetAppNotificationsEnabledUpdatePayload(mongoAppId),
+	}
+	updateOptions := options.Update()
+
+	// Если пользователь указан, добавляем его в update payload.
+	if user != nil {
+		updatePayload["$setOnInsert"] = NewUser(u.Id, nil, int(user.Timezone))
+		updateOptions.SetUpsert(true)
+	}
+
 	res, err := p.getUsersCollection().UpdateByID(
 		context.Background(),
 		userId,
-		bson.D{{"$set", bson.D{{path, allowed}}}},
+		updatePayload,
+		updateOptions,
 	)
 	if err != nil {
 		return customerror.NewServiceError(err)
 	}
-	if res.MatchedCount == 0 {
+	if res.MatchedCount == 0 && user == nil {
 		return customerror.NewServiceError(providers.ErrUserDoesNotExist)
 	}
 	return nil
@@ -106,8 +125,8 @@ func (p *Provider) SetAllowStatusForUser(
 
 func (p *Provider) SaveSendResult(
 	results *notification.SendResult,
-	appId app.Id,
-	taskId task.Id,
+	appId appid.Id,
+	taskId taskid.Id,
 	date time.Time,
 ) *customerror.ServiceError {
 	// TODO: Возможно это сделать в виде агрегации?
@@ -169,6 +188,7 @@ func New(
 	getUsersByTimezonesLimit int64,
 ) (providers.Provider, error) {
 	connString := fmt.Sprintf("mongodb://%s:%d", host, port)
+	// TODO: Возможно стоит передавать контекст с таймаутом.
 	client, err := mongo.Connect(context.Background(), options.Client().ApplyURI(connString))
 	if err != nil {
 		return nil, err

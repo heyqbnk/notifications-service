@@ -3,11 +3,12 @@ package service
 import (
 	"errors"
 	"fmt"
-	"github.com/wolframdeus/noitifications-service/internal/app"
+	"github.com/wolframdeus/noitifications-service/internal/appid"
 	customerror "github.com/wolframdeus/noitifications-service/internal/errors"
 	"github.com/wolframdeus/noitifications-service/internal/notification"
 	"github.com/wolframdeus/noitifications-service/internal/providers"
 	"github.com/wolframdeus/noitifications-service/internal/task"
+	"github.com/wolframdeus/noitifications-service/internal/taskid"
 	"github.com/wolframdeus/noitifications-service/internal/timezone"
 	"github.com/wolframdeus/noitifications-service/internal/user"
 	"time"
@@ -28,8 +29,9 @@ func (s *Service) recoverServiceError(e interface{}) *customerror.ServiceError {
 // В безопасном режиме вызывает функцию SetAllowStatusForUser провайдера.
 func (s *Service) safeSetAllowStatusForUser(
 	userId user.Id,
-	appId app.Id,
+	appId appid.Id,
 	allowed bool,
+	user *user.User,
 ) (err *customerror.ServiceError) {
 	defer func() {
 		if e := recover(); e != nil {
@@ -44,13 +46,14 @@ func (s *Service) safeSetAllowStatusForUser(
 						"userId":  userId,
 						"appId":   appId,
 						"allowed": allowed,
+						"user":    user,
 					},
 				},
 			})
 		}
 	}()
 
-	err = s.provider.SetAllowStatusForUser(userId, appId, allowed)
+	err = s.provider.SetAllowStatusForUser(userId, appId, allowed, user)
 	return
 }
 
@@ -84,8 +87,8 @@ func (s *Service) safeGetUsersByTimezones(
 // В безопасном режиме вызывает функцию SaveSendResult провайдера.
 func (s *Service) safeSaveSendResult(
 	results *notification.SendResult,
-	appId app.Id,
-	taskId task.Id,
+	appId appid.Id,
+	taskId taskid.Id,
 	date time.Time,
 ) (err *customerror.ServiceError) {
 	defer func() {

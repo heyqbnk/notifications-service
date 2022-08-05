@@ -1,8 +1,10 @@
 package mongodb
 
 import (
+	"fmt"
 	"github.com/wolframdeus/noitifications-service/internal/timezone"
 	"github.com/wolframdeus/noitifications-service/internal/user"
+	"go.mongodb.org/mongo-driver/bson"
 	"time"
 )
 
@@ -33,11 +35,20 @@ type App struct {
 // Apps описывает карту с информацией о каких-либо приложениях пользователя.
 type Apps map[AppId]App
 
+// GetAppNotificationsEnabledUpdatePayload возвращает пэйлоад обновления
+// разрешения на отправку уведомления для указанного приложения.
+func (a *Apps) GetAppNotificationsEnabledUpdatePayload(appId AppId) bson.D {
+	app, _ := (*a)[appId]
+	path := fmt.Sprintf("apps.%d.areNotificationsEnabled", appId)
+
+	return bson.D{{path, app.AreNotificationsEnabled}}
+}
+
 type User struct {
 	// Уникальный идентификатор пользователя ВКонтакте.
 	Id UserId `bson:"_id"`
 	// Информация о приложениях пользователя.
-	Apps Apps `bson:"apps"`
+	Apps Apps `bson:"apps,omitempty"`
 	// Часовой пояс пользователя. Выражается в количестве минут, которое
 	// необходимо прибавить ко времени по Гринвичу, чтобы получить локальное
 	// время.
